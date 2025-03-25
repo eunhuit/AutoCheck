@@ -28,10 +28,10 @@ def gti(dt): # 테이블 인덱스
 pip install gspread oauth2client tkinter
 ```
 ## Google API 설정
-1. Google Cloud Console에서 서비스 계정 생성
-2. Google Sheets API 활성화
+1. Google Cloud Console에서 [서비스 계정](https://console.cloud.google.com/apis/credentials?inv=1&invt=Abs-SQ&project=flawless-star-346013) 생성
+2. Google Sheets [API](https://console.cloud.google.com/marketplace/product/google/sheets.googleapis.com?q=search&referrer=search&inv=1&invt=Abs-SQ&project=flawless-star-346013) 활성화
 3. 서비스 계정 키(json 파일) 다운로드
-4. 스프레드시트 공유 설정(서비스 계정 이메일 추가)
+4. 스프레드시트 공유 설정(공개된 시트는 않해도 괜찮습니다!!)
 
 ## ⚙️ 설정 가이드
 ```Python
