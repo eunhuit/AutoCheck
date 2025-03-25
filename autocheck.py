@@ -7,8 +7,8 @@ from gspread.utils import rowcol_to_a1
 # 설정 변수
 SERVICE_ACCOUNT_FILE = "./google.json"
 SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1p1lu3ytnzCgcLhUpDstoK8D0TmWPF5wLqIZWe_60Nq8/edit?usp=sharing"
-BASE_ROW = 25  # 사용자의 행 번호
-DEPARTMENT_NAME = "IT네트워크시스템"  # 부서명
+BASE_ROW = 25  # 사용자 행 번호
+DEPARTMENT_NAME = ""  # 직종명
 
 def gsn(dt):
     return f"{dt.month}월 {(dt.day - 1) // 7 + 1}째주"
@@ -22,7 +22,7 @@ def ft(dt):
     return f"{dt.year}. {dt.month}. {dt.day} {period} {hour12:02d}:{dt.minute:02d}:{dt.second:02d}"
 
 gc = gspread.service_account(SERVICE_ACCOUNT_FILE)
-now = datetime.now() + timedelta(days=1)  # 테스트를 위해 1일 추가
+now = datetime.now()
 sheet_name = gsn(now)
 try:
     worksheet = gc.open_by_url(SPREADSHEET_URL).worksheet(sheet_name)
@@ -35,7 +35,7 @@ BASE_COL_GOOUT = 5
 TABLE_WIDTH = 6
 
 def in_():
-    now_actual = datetime.now() + timedelta(days=1)  # 테스트를 위해 1일 추가
+    now_actual = datetime.now()
     formatted = ft(now_actual)
     table_idx = gti(now_actual)
     col_checkin = BASE_COL_CHECKIN + table_idx * TABLE_WIDTH
@@ -46,7 +46,7 @@ def in_():
     worksheet.update_acell(cell_left, DEPARTMENT_NAME)
 
 def out():
-    now_actual = datetime.now() + timedelta(days=1)  # 테스트를 위해 1일 추가
+    now_actual = datetime.now()
     formatted = ft(now_actual)
     table_idx = gti(now_actual)
     col = BASE_COL_CHECKOUT + table_idx * TABLE_WIDTH
@@ -57,7 +57,7 @@ out_start = None
 
 def outside():
     global out_start
-    out_start = datetime.now() + timedelta(days=1)  # 테스트를 위해 1일 추가
+    out_start = datetime.now()
     start_str = out_start.strftime("%H:%M")
     out_window = tk.Toplevel(root)
     out_window.title("외출 측정")
@@ -66,7 +66,7 @@ def outside():
     label = tk.Label(out_window, text=f"외출 시작: {start_str}")
     label.pack(pady=10)
     def rfo():
-        out_end = datetime.now() + timedelta(days=1)  # 테스트를 위해 1일 추가
+        out_end = datetime.now()
         end_str = out_end.strftime("%H:%M")
         reason = simpledialog.askstring("사유 입력", "외출 사유를 입력하세요:", parent=out_window)
         if reason is None:
