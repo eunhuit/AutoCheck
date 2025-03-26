@@ -1,24 +1,24 @@
 import tkinter as tk
 import tkinter.font as tkFont
 import tkinter.simpledialog
-import tkinter.messagebox  # 경고창용 모듈
+import tkinter.messagebox 
 import json
 import sys
 from datetime import datetime, timedelta
 import gspread
 from gspread.utils import rowcol_to_a1
 
-# 디버깅 모드 설정 (코드 수정 시에만 사용, GUI에는 반영하지 않음)
-DEBUG_MODE = False  # 디버깅 모드 활성화: True, 비활성화: False
-DEBUG_DATE = datetime(2025, 3, 26, 10, 0, 0)  # 디버깅 모드일 때 사용할 커스텀 날짜
+# 디버깅
+DEBUG_MODE = False  # 활성화: True, 비활성화: False
+DEBUG_DATE = datetime(2025, 3, 26, 10, 0, 0)  # 디버깅 모드일 때 사용할 날짜
 
 def get_now():
     return DEBUG_DATE if DEBUG_MODE else datetime.now()
 
-# 설정 변수 저장 파일
+# 설정 저장 파일
 CONFIG_FILE = "config.json"
 
-# 기본 설정 변수 불러오기/저장 함수
+# 기본 설정 불러오기/저장 함수
 def load_config():
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -36,7 +36,7 @@ def save_config():
 
 config = load_config()
 
-# 선택 가능한 부서 리스트 (드롭다운 메뉴용)
+# 직종 리스트 (드롭다운 메뉴용)
 DEPARTMENT_LIST = ["IT네트워크시스템", "클라우드컴퓨팅", "사이버보안", "공업전자기기", "메카트로닉스"]
 
 # D-Day 날짜 설정
@@ -70,11 +70,9 @@ def calculate_dday(target_date):
     else:
         return f"D+{-days}"
 
-# gspread 관련 설정
 try:
     gc = gspread.service_account("./google.json")
 except FileNotFoundError:
-    # Tk 인스턴스가 없을 수도 있으므로 임시로 생성 후 숨김
     temp_root = tk.Tk()
     temp_root.withdraw()
     tk.messagebox.showerror("Error", "google.json 파일을 찾을 수 없습니다.\n실행 파일과 같은 위치에 넣어주세요!")
@@ -122,7 +120,7 @@ def in_():
         return  # 이름이 없으므로 동작 중단
     cell_checkin = rowcol_to_a1(row_number, checkin_col)
     worksheet.update_acell(cell_checkin, formatted)
-    dept_col = checkin_col - 1  # 부서명이 들어갈 칼럼
+    dept_col = checkin_col - 1 
     cell_dept = rowcol_to_a1(row_number, dept_col)
     worksheet.update_acell(cell_dept, config["DEPARTMENT_NAME"])
 
