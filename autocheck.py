@@ -1,14 +1,17 @@
 import tkinter as tk
-from tkinter import simpledialog
+import tkinter.font as tkFont
 from datetime import datetime, timedelta
 import gspread
 from gspread.utils import rowcol_to_a1
 
 # 설정 변수
 SERVICE_ACCOUNT_FILE = "./google.json"
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1p1lu3ytnzCgcLhUpDstoK8D0TmWPF5wLqIZWe_60Nq8/edit?usp=sharing"
-BASE_ROW = 25  # 사용자 행 번호
-DEPARTMENT_NAME = ""  # 직종명
+SPREADSHEET_URL = "구글 시트 URL"
+BASE_ROW = 25  # 사용자의 행 번호
+DEPARTMENT_NAME = "IT네트워크시스템"  # 부서명
+# D-Day 날짜 설정
+DDAY_LOCAL = datetime(2025, 4, 7)  # '지방' 이벤트 날짜
+DDAY_NATIONAL = datetime(2025, 9, 20)  # '전국' 이벤트 날짜
 
 def gsn(dt):
     return f"{dt.month}월 {(dt.day - 1) // 7 + 1}째주"
@@ -68,7 +71,7 @@ def outside():
     def rfo():
         out_end = datetime.now()
         end_str = out_end.strftime("%H:%M")
-        reason = simpledialog.askstring("사유 입력", "외출 사유를 입력하세요:", parent=out_window)
+        reason = tk.simpledialog.askstring("사유 입력", "외출 사유를 입력하세요:", parent=out_window)
         if reason is None:
             reason = ""
         result_str = f"{start_str}~{end_str}({reason})"
@@ -80,14 +83,46 @@ def outside():
     btn_return = tk.Button(out_window, text="복귀", command=rfo)
     btn_return.pack(pady=10)
 
+# D-Day 계산 함수
+def calculate_dday(target_date):
+    today = datetime.now().date()
+    delta = target_date.date() - today
+    days = delta.days
+    if days == 0:
+        return "D-DAY"
+    elif days > 0:
+        return f"D-{days}"
+    else:
+        return f"D+{-days}"
+
+# Tkinter 윈도우 생성
 root = tk.Tk()
 root.title("근태 관리")
-root.geometry("300x200")
+root.geometry("250x200")
 root.attributes('-topmost', True)
+
+# 폰트 설정
+bold_font = tkFont.Font(family="Helvetica", size=12, weight="bold")
+
+# 출근 버튼
 btn_check_in = tk.Button(root, text="출근", command=in_, width=20)
-btn_check_in.pack(padx=10, pady=10)
+btn_check_in.pack(padx=10, pady=5)
+
+# 퇴근 버튼
 btn_check_out = tk.Button(root, text="퇴근", command=out, width=20)
-btn_check_out.pack(padx=10, pady=10)
+btn_check_out.pack(padx=10, pady=5)
+
+# 외출 버튼
 btn_go_out = tk.Button(root, text="외출", command=outside, width=20)
-btn_go_out.pack(padx=10, pady=10)
+btn_go_out.pack(padx=10, pady=5)
+
+# D-Day 표시
+dday_local_text = f"지방 {calculate_dday(DDAY_LOCAL)}"
+dday_local_label = tk.Label(root, text=dday_local_text, font=bold_font)
+dday_local_label.pack(pady=5)
+
+dday_national_text = f"전국 {calculate_dday(DDAY_NATIONAL)}"
+dday_national_label = tk.Label(root, text=dday_national_text, font=bold_font)
+dday_national_label.pack(pady=5)
+
 root.mainloop()
