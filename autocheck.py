@@ -22,13 +22,17 @@ CONFIG_FILE = "config.json"
 def load_config():
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            config = json.load(f)
     except FileNotFoundError:
-        return {
+        config = {
             "BASE_ROW": 25,
             "DEPARTMENT_NAME": "IT네트워크시스템",
-            "USER_NAME": ""  # 기본 사용자 이름은 빈 문자열
+            "USER_NAME": "",  # 기본 사용자 이름은 빈 문자열
+            "WEEK_NUMBER": "1째주"  # 드롭다운에서 선택할 기본값
         }
+    if "WEEK_NUMBER" not in config:
+        config["WEEK_NUMBER"] = "1째주"
+    return config
 
 def save_config():
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -48,7 +52,12 @@ def adjusted_date(dt):
 
 def gsn(dt):
     dt = adjusted_date(dt)
-    return f"{dt.month}월 {(dt.day - 1) // 7 + 1}째주"
+    month_str = f"{dt.month}월"
+    manual_week = config.get("WEEK_NUMBER", "").strip()
+    if not manual_week:
+        tk.messagebox.showwarning("경고", "설정에서 째주를 선택하지 않았습니다.")
+        manual_week = f"{(dt.day - 1) // 7 + 1}째주"
+    return f"{month_str} {manual_week}"
 
 def gti(dt):
     dt = adjusted_date(dt)
@@ -70,6 +79,7 @@ def calculate_dday(target_date):
     else:
         return f"D+{-days}"
 
+# 구글 스프레드시트 연결 (google.json 파일이 같은 폴더에 있어야 함)
 try:
     gc = gspread.service_account("./google.json")
 except FileNotFoundError:
@@ -78,24 +88,23 @@ except FileNotFoundError:
     tk.messagebox.showerror("Error", "google.json 파일을 찾을 수 없습니다.\n실행 파일과 같은 위치에 넣어주세요!")
     sys.exit(1)
 
-now = get_now()
-sheet_name = gsn(now)
-try:
-    worksheet = gc.open_by_url("구글 시트 URL").worksheet(sheet_name)
-except gspread.WorksheetNotFound:
-    worksheet = gc.open_by_url("구글 시트 URL").add_worksheet(title=sheet_name, rows="100", cols="50")
+# 스프레드시트 URL 상수
+SPREADSHEET_URL = ""
 
-# 상수 설정
-BASE_COL_CHECKIN = 3
-BASE_COL_CHECKOUT = 4
-BASE_COL_GOOUT = 5
-TABLE_WIDTH = 6
+def get_worksheet():
+    """현재 설정된 시트 이름으로 시트를 불러옵니다. 없으면 None 반환."""
+    now_actual = get_now()
+    sheet_name = gsn(now_actual)
+    try:
+        ws = gc.open_by_url(SPREADSHEET_URL).worksheet(sheet_name)
+        return ws
+    except gspread.WorksheetNotFound:
+        return None
 
-def get_user_row(checkin_col):
+def get_user_row(ws, checkin_col):
     """
-    출근 날짜가 입력되는 칼럼(checkin_col) 기준 왼쪽 2칸에 위치한 '이름' 칼럼에서,
+    ws(워크시트)에서 '이름' 칼럼(checkin_col-2) 기준으로,
     config에 저장된 USER_NAME을 찾아 행 번호를 반환합니다.
-    이름을 찾지 못하면 경고창을 띄우고 None을 반환합니다.
     """
     name_col = checkin_col - 2
     user_name = config.get("USER_NAME", "").strip()
@@ -103,41 +112,62 @@ def get_user_row(checkin_col):
         tk.messagebox.showwarning("경고", "사용자 이름이 설정되어 있지 않습니다.\n설정을 확인해 주세요.")
         return None
     
-    col_values = worksheet.col_values(name_col)
+    col_values = ws.col_values(name_col)
     for i, val in enumerate(col_values, start=1):
         if val.strip() == user_name:
             return i
     tk.messagebox.showwarning("경고", "시트에서 사용자의 이름을 찾을 수 없습니다.\n설정을 확인해 주세요.")
     return None
 
+# 상수 설정
+BASE_COL_CHECKIN = 3
+BASE_COL_CHECKOUT = 4
+BASE_COL_GOOUT = 5
+TABLE_WIDTH = 6
+
 def in_():
     now_actual = get_now()
+    ws = get_worksheet()
+    if ws is None:
+        sheet_name = gsn(now_actual)
+        tk.messagebox.showwarning("경고", f"시트 '{sheet_name}'가 존재하지 않습니다.\n설정을 확인하세요.")
+        return
     formatted = ft(now_actual)
     table_idx = gti(now_actual)
     checkin_col = BASE_COL_CHECKIN + table_idx * TABLE_WIDTH
-    row_number = get_user_row(checkin_col)
+    row_number = get_user_row(ws, checkin_col)
     if row_number is None:
         return  # 이름이 없으므로 동작 중단
     cell_checkin = rowcol_to_a1(row_number, checkin_col)
-    worksheet.update_acell(cell_checkin, formatted)
+    ws.update_acell(cell_checkin, formatted)
     dept_col = checkin_col - 1 
     cell_dept = rowcol_to_a1(row_number, dept_col)
-    worksheet.update_acell(cell_dept, config["DEPARTMENT_NAME"])
+    ws.update_acell(cell_dept, config["DEPARTMENT_NAME"])
 
 def out():
     now_actual = get_now()
+    ws = get_worksheet()
+    if ws is None:
+        sheet_name = gsn(now_actual)
+        tk.messagebox.showwarning("경고", f"시트 '{sheet_name}'가 존재하지 않습니다.\n설정을 확인하세요.")
+        return
     formatted = ft(now_actual)
     table_idx = gti(now_actual)
     checkin_col = BASE_COL_CHECKIN + table_idx * TABLE_WIDTH
-    row_number = get_user_row(checkin_col)
+    row_number = get_user_row(ws, checkin_col)
     if row_number is None:
         return  # 이름이 없으므로 동작 중단
     col = BASE_COL_CHECKOUT + table_idx * TABLE_WIDTH
     cell = rowcol_to_a1(row_number, col)
-    worksheet.update_acell(cell, formatted)
+    ws.update_acell(cell, formatted)
 
 def outside():
     out_start = get_now()
+    ws = get_worksheet()
+    if ws is None:
+        sheet_name = gsn(out_start)
+        tk.messagebox.showwarning("경고", f"시트 '{sheet_name}'가 존재하지 않습니다.\n설정을 확인하세요.")
+        return
     start_str = out_start.strftime("%H:%M")
     out_window = tk.Toplevel(root)
     out_window.title("외출 측정")
@@ -145,8 +175,15 @@ def outside():
     out_window.attributes('-topmost', True)
     label = tk.Label(out_window, text=f"외출 시작: {start_str}")
     label.pack(pady=10)
+    
     def rfo():
         out_end = get_now()
+        ws_inner = get_worksheet()
+        if ws_inner is None:
+            sheet_name_inner = gsn(out_end)
+            tk.messagebox.showwarning("경고", f"시트 '{sheet_name_inner}'가 존재하지 않습니다.\n설정을 확인하세요.")
+            out_window.destroy()
+            return
         end_str = out_end.strftime("%H:%M")
         reason = tk.simpledialog.askstring("사유 입력", "외출 사유를 입력하세요:", parent=out_window)
         if reason is None:
@@ -154,21 +191,28 @@ def outside():
         result_str = f"{start_str}~{end_str}({reason})"
         table_idx_inner = gti(out_end)
         checkin_col_inner = BASE_COL_CHECKIN + table_idx_inner * TABLE_WIDTH
-        row_number_inner = get_user_row(checkin_col_inner)
+        row_number_inner = get_user_row(ws_inner, checkin_col_inner)
         if row_number_inner is None:
             out_window.destroy()
-            return  # 이름이 없으므로 동작 중단
+            return
         col = BASE_COL_GOOUT + table_idx_inner * TABLE_WIDTH
         cell = rowcol_to_a1(row_number_inner, col)
-        worksheet.update_acell(cell, result_str)
+        # 기존 셀 내용 확인 후, 있다면 줄바꿈하여 추가
+        existing_value = ws_inner.acell(cell).value
+        if existing_value:
+            new_value = existing_value + "\n" + result_str
+        else:
+            new_value = result_str
+        ws_inner.update_acell(cell, new_value)
         out_window.destroy()
+    
     btn_return = tk.Button(out_window, text="복귀", command=rfo)
     btn_return.pack(pady=10)
 
 def open_settings():
     settings_window = tk.Toplevel(root)
     settings_window.title("설정")
-    settings_window.geometry("300x250")
+    settings_window.geometry("300x300")
     settings_window.attributes('-topmost', True)
     
     tk.Label(settings_window, text="부서 선택:").pack(pady=5)
@@ -182,9 +226,20 @@ def open_settings():
     name_entry.insert(0, config.get("USER_NAME", ""))
     name_entry.pack(pady=5)
     
+    tk.Label(settings_window, text="째주 선택:").pack(pady=5)
+    week_options = ["1째주", "2째주", "3째주", "4째주", "5째주", "6째주"]
+    week_var = tk.StringVar(settings_window)
+    if config.get("WEEK_NUMBER", "") in week_options:
+        week_var.set(config["WEEK_NUMBER"])
+    else:
+        week_var.set(week_options[0])
+    week_menu = tk.OptionMenu(settings_window, week_var, *week_options)
+    week_menu.pack(pady=5)
+    
     def save_settings():
         config["DEPARTMENT_NAME"] = department_var.get()
         config["USER_NAME"] = name_entry.get().strip()
+        config["WEEK_NUMBER"] = week_var.get().strip()
         save_config()
         settings_window.destroy()
     
