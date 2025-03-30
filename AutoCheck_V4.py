@@ -4,6 +4,7 @@ import tkinter.simpledialog
 import tkinter.messagebox 
 import json
 import sys
+import os
 from datetime import datetime, timedelta
 import gspread
 from gspread.utils import rowcol_to_a1
@@ -28,10 +29,14 @@ def load_config():
             "BASE_ROW": 25,
             "DEPARTMENT_NAME": "IT네트워크시스템",
             "USER_NAME": "",  # 기본 사용자 이름은 빈 문자열
-            "WEEK_NUMBER": "1째주"  # 드롭다운에서 선택할 기본값
+            "WEEK_NUMBER": "1째주",  # 드롭다운에서 선택할 기본값
+            # 커스텀 디데이 설정 (없으면 None)
+            "CUSTOM_DDAY": {"label": "", "date": ""}
         }
     if "WEEK_NUMBER" not in config:
         config["WEEK_NUMBER"] = "1째주"
+    if "CUSTOM_DDAY" not in config:
+        config["CUSTOM_DDAY"] = {"label": "", "date": ""}
     return config
 
 def save_config():
@@ -43,7 +48,7 @@ config = load_config()
 # 직종 리스트 (드롭다운 메뉴용)
 DEPARTMENT_LIST = ["IT네트워크시스템", "클라우드컴퓨팅", "사이버보안", "공업전자기기", "메카트로닉스"]
 
-# D-Day 날짜 설정
+# D-Day 날짜 설정 (기본)
 DDAY_LOCAL = datetime(2025, 4, 7)  # '지방' 이벤트 날짜
 DDAY_NATIONAL = datetime(2025, 9, 20)  # '전국' 이벤트 날짜
 
@@ -65,31 +70,7 @@ def gti(dt):
 
 def ft(dt):
     period = "오전" if dt.hour < 12 else "오후"
-    hour12 = dt.hour if 1 <= dt.hour <= 12 else (dt.hour - 12 if dt.hour > 12 else 12)
-    return f"{dt.year}. {dt.month}. {dt.day} {period} {hour12:02d}:{dt.minute:02d}:{dt.second:02d}"
-
-def calculate_dday(target_date):
-    today = get_now().date()
-    delta = target_date.date() - today
-    days = delta.days
-    if days == 0:
-        return "D-DAY"
-    elif days > 0:
-        return f"D-{days}"
-    else:
-        return f"D+{-days}"
-
-# 구글 스프레드시트 연결 (google.json 파일이 같은 폴더에 있어야 함)
-try:
-    gc = gspread.service_account("./google.json")
-except FileNotFoundError:
-    temp_root = tk.Tk()
-    temp_root.withdraw()
-    tk.messagebox.showerror("Error", "google.json 파일을 찾을 수 없습니다.\n실행 파일과 같은 위치에 넣어주세요!")
-    sys.exit(1)
-
-# 스프레드시트 URL 상수
-SPREADSHEET_URL = ""
+    hour12 = dt.hour i소"
 
 def get_worksheet():
     """현재 설정된 시트 이름으로 시트를 불러옵니다. 없으면 None 반환."""
@@ -212,7 +193,7 @@ def outside():
 def open_settings():
     settings_window = tk.Toplevel(root)
     settings_window.title("설정")
-    settings_window.geometry("300x300")
+    settings_window.geometry("300x400")
     settings_window.attributes('-topmost', True)
     
     tk.Label(settings_window, text="부서 선택:").pack(pady=5)
@@ -236,19 +217,68 @@ def open_settings():
     week_menu = tk.OptionMenu(settings_window, week_var, *week_options)
     week_menu.pack(pady=5)
     
+    # 커스텀 디데이 설정 항목
+    tk.Label(settings_window, text="커스텀 디데이 이벤트명:").pack(pady=5)
+    custom_label_entry = tk.Entry(settings_window)
+    custom_label_entry.insert(0, config.get("CUSTOM_DDAY", {}).get("label", ""))
+    custom_label_entry.pack(pady=5)
+    
+    tk.Label(settings_window, text="커스텀 디데이 날짜 (YYYY-MM-DD):").pack(pady=5)
+    custom_date_entry = tk.Entry(settings_window)
+    custom_date_entry.insert(0, config.get("CUSTOM_DDAY", {}).get("date", ""))
+    custom_date_entry.pack(pady=5)
+    
     def save_settings():
         config["DEPARTMENT_NAME"] = department_var.get()
         config["USER_NAME"] = name_entry.get().strip()
         config["WEEK_NUMBER"] = week_var.get().strip()
+        # 커스텀 디데이 저장
+        config["CUSTOM_DDAY"]["label"] = custom_label_entry.get().strip()
+        config["CUSTOM_DDAY"]["date"] = custom_date_entry.get().strip()
         save_config()
+        update_dday_labels()  # 디데이 라벨 업데이트
         settings_window.destroy()
     
     save_button = tk.Button(settings_window, text="저장", command=save_settings)
     save_button.pack(pady=10)
 
+def update_dday_labels():
+    # 기본 이벤트 디데이
+    dday_local_label.config(text=f"지방 {calculate_dday(DDAY_LOCAL)}")
+    dday_national_label.config(text=f"전국 {calculate_dday(DDAY_NATIONAL)}")
+    # 커스텀 디데이 이벤트 (설정되어 있으면)
+    custom = config.get("CUSTOM_DDAY", {})
+    label = custom.get("label", "").strip()
+    date_str = custom.get("date", "").strip()
+    if label and date_str:
+        try:
+            custom_date = datetime.strptime(date_str, "%Y-%m-%d")
+            custom_text = f"{label} {calculate_dday(custom_date)}"
+        except ValueError:
+            custom_text = f"{label} (날짜 형식 오류)"
+        custom_dday_label.config(text=custom_text)
+    else:
+        custom_dday_label.config(text="")
+
+# 자동 리로드 기능 (매일 3시에 앱 재시작)
+def schedule_reload():
+    now = get_now()
+    # 다음 3시 계산: 만약 현재 시간이 3시 이후면 다음날 3시
+    target = now.replace(hour=3, minute=0, second=0, microsecond=0)
+    if now >= target:
+        target += timedelta(days=1)
+    delay_ms = int((target - now).total_seconds() * 1000)
+    root.after(delay_ms, reload_app)
+
+def reload_app():
+    # 앱 재시작: os.execl을 사용하여 현재 파이썬 인터프리터와 스크립트를 재실행
+    python_exe = sys.executable
+    os.execl(python_exe, python_exe, *sys.argv)
+
+# 메인 창 생성
 root = tk.Tk()
 root.title("근태 관리")
-root.geometry("250x250")
+root.geometry("250x270")
 root.attributes('-topmost', True)
 
 bold_font = tkFont.Font(family="Helvetica", size=14, weight="bold")
@@ -265,10 +295,17 @@ btn_go_out.pack(padx=10, pady=5)
 btn_settings = tk.Button(root, text="설정", command=open_settings, width=20)
 btn_settings.pack(padx=10, pady=5)
 
-dday_local_label = tk.Label(root, text=f"지방 {calculate_dday(DDAY_LOCAL)}", font=bold_font)
+# 디데이 라벨들
+dday_local_label = tk.Label(root, font=bold_font)
 dday_local_label.pack(pady=5)
 
-dday_national_label = tk.Label(root, text=f"전국 {calculate_dday(DDAY_NATIONAL)}", font=bold_font)
+dday_national_label = tk.Label(root, font=bold_font)
 dday_national_label.pack(pady=5)
+
+custom_dday_label = tk.Label(root, font=bold_font, fg="blue")
+custom_dday_label.pack(pady=5)
+
+update_dday_labels()  # 시작시 라벨 업데이트
+schedule_reload()      # 자동 리로드 예약
 
 root.mainloop()
