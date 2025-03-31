@@ -30,6 +30,7 @@ def load_config():
             "DEPARTMENT_NAME": "IT네트워크시스템",
             "USER_NAME": "",  # 기본 사용자 이름은 빈 문자열
             "WEEK_NUMBER": "1째주",  # 드롭다운에서 선택할 기본값
+            "MANUAL_MONTH": "",  # 빈 문자열이면 자동으로 현재 월 사용, 아니면 수동 선택한 월 사용 (예: "4월")
             # 커스텀 디데이 설정 (없으면 None)
             "CUSTOM_DDAY": {"label": "", "date": ""}
         }
@@ -37,6 +38,8 @@ def load_config():
         config["WEEK_NUMBER"] = "1째주"
     if "CUSTOM_DDAY" not in config:
         config["CUSTOM_DDAY"] = {"label": "", "date": ""}
+    if "MANUAL_MONTH" not in config:
+        config["MANUAL_MONTH"] = ""
     return config
 
 def save_config():
@@ -57,7 +60,12 @@ def adjusted_date(dt):
 
 def gsn(dt):
     dt = adjusted_date(dt)
-    month_str = f"{dt.month}월"
+    # 수동 월 선택: 설정에 MANUAL_MONTH 값이 있으면 사용, 아니면 자동으로 현재 월 사용
+    manual_month = config.get("MANUAL_MONTH", "").strip()
+    if manual_month:
+        month_str = manual_month
+    else:
+        month_str = f"{dt.month}월"
     manual_week = config.get("WEEK_NUMBER", "").strip()
     if not manual_week:
         tk.messagebox.showwarning("경고", "설정에서 째주를 선택하지 않았습니다.")
@@ -70,7 +78,31 @@ def gti(dt):
 
 def ft(dt):
     period = "오전" if dt.hour < 12 else "오후"
-    hour12 = dt.hour i소"
+    hour12 = dt.hour if 1 <= dt.hour <= 12 else (dt.hour - 12 if dt.hour > 12 else 12)
+    return f"{dt.year}. {dt.month}. {dt.day} {period} {hour12:02d}:{dt.minute:02d}:{dt.second:02d}"
+
+def calculate_dday(target_date):
+    today = get_now().date()
+    delta = target_date.date() - today
+    days = delta.days
+    if days == 0:
+        return "D-DAY"
+    elif days > 0:
+        return f"D-{days}"
+    else:
+        return f"D+{-days}"
+
+# 구글 스프레드시트 연결 (google.json 파일이 같은 폴더에 있어야 함)
+try:
+    gc = gspread.service_account("./google.json")
+except FileNotFoundError:
+    temp_root = tk.Tk()
+    temp_root.withdraw()
+    tk.messagebox.showerror("Error", "google.json 파일을 찾을 수 없습니다.\n실행 파일과 같은 위치에 넣어주세요!")
+    sys.exit(1)
+
+# 스프레드시트 URL 상수
+SPREADSHEET_URL = "Google spreadsheet url"
 
 def get_worksheet():
     """현재 설정된 시트 이름으로 시트를 불러옵니다. 없으면 None 반환."""
@@ -193,7 +225,7 @@ def outside():
 def open_settings():
     settings_window = tk.Toplevel(root)
     settings_window.title("설정")
-    settings_window.geometry("300x400")
+    settings_window.geometry("300x450")
     settings_window.attributes('-topmost', True)
     
     tk.Label(settings_window, text="부서 선택:").pack(pady=5)
@@ -217,6 +249,15 @@ def open_settings():
     week_menu = tk.OptionMenu(settings_window, week_var, *week_options)
     week_menu.pack(pady=5)
     
+    # 월 선택 옵션 추가 (자동 또는 수동 선택)
+    tk.Label(settings_window, text="월 선택:").pack(pady=5)
+    month_options = ["자동"] + [f"{i}월" for i in range(1, 13)]
+    month_var = tk.StringVar(settings_window)
+    current_manual_month = config.get("MANUAL_MONTH", "").strip()
+    month_var.set(current_manual_month if current_manual_month else "자동")
+    month_menu = tk.OptionMenu(settings_window, month_var, *month_options)
+    month_menu.pack(pady=5)
+    
     # 커스텀 디데이 설정 항목
     tk.Label(settings_window, text="커스텀 디데이 이벤트명:").pack(pady=5)
     custom_label_entry = tk.Entry(settings_window)
@@ -232,6 +273,9 @@ def open_settings():
         config["DEPARTMENT_NAME"] = department_var.get()
         config["USER_NAME"] = name_entry.get().strip()
         config["WEEK_NUMBER"] = week_var.get().strip()
+        # 월 선택 저장: "자동"이면 빈 문자열로 저장
+        selected_month = month_var.get()
+        config["MANUAL_MONTH"] = "" if selected_month == "자동" else selected_month
         # 커스텀 디데이 저장
         config["CUSTOM_DDAY"]["label"] = custom_label_entry.get().strip()
         config["CUSTOM_DDAY"]["date"] = custom_date_entry.get().strip()
@@ -263,15 +307,17 @@ def update_dday_labels():
 # 자동 리로드 기능 (매일 3시에 앱 재시작)
 def schedule_reload():
     now = get_now()
-    # 다음 3시 계산: 만약 현재 시간이 3시 이후면 다음날 3시
     target = now.replace(hour=3, minute=0, second=0, microsecond=0)
     if now >= target:
         target += timedelta(days=1)
     delay_ms = int((target - now).total_seconds() * 1000)
     root.after(delay_ms, reload_app)
 
+#Debug
+#def schedule_reload():
+#    root.after(5000, reload_app)
+
 def reload_app():
-    # 앱 재시작: os.execl을 사용하여 현재 파이썬 인터프리터와 스크립트를 재실행
     python_exe = sys.executable
     os.execl(python_exe, python_exe, *sys.argv)
 
