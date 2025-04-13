@@ -1,6 +1,6 @@
 # Google Sheets 근태 관리 시스템 📅⏱️
 
-![Project Version](https://img.shields.io/badge/Version-1.0.6-blue)
+![Project Version](https://img.shields.io/badge/Version-1.0.7-blue)
 ![Python Version](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green)
 
