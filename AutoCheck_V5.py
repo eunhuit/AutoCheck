@@ -8,6 +8,7 @@ import os
 from datetime import datetime, timedelta
 import gspread
 from gspread.utils import rowcol_to_a1
+import google.auth.exceptions  # 구글 인증 오류 처리를 위한 import
 
 # 디버깅
 DEBUG_MODE = False  # 활성화: True, 비활성화: False
@@ -102,7 +103,7 @@ except FileNotFoundError:
     sys.exit(1)
 
 # 스프레드시트 URL 상수
-SPREADSHEET_URL = "Google spreadsheet url"
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/13wopjVYDxvNH-7L9RX7e9TYqcpSnEjnZoyANc4YPWDc/edit?gid=1839056835#gid=1839056835"
 
 def get_worksheet():
     """현재 설정된 시트 이름으로 시트를 불러옵니다. 없으면 None 반환."""
@@ -111,8 +112,12 @@ def get_worksheet():
     try:
         ws = gc.open_by_url(SPREADSHEET_URL).worksheet(sheet_name)
         return ws
-    except gspread.WorksheetNotFound:
+    except gspread.exceptions.WorksheetNotFound:
         return None
+    except google.auth.exceptions.RefreshError as e:
+        tk.messagebox.showerror("키 파일 오류",
+                                f"Google 인증 오류가 발생했습니다.\n키 파일에 문제가 있을 수 있습니다.\n오류 상세: {e}")
+        sys.exit(1)
 
 def get_user_row(ws, checkin_col):
     """
