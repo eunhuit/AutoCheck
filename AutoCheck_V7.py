@@ -9,6 +9,46 @@ from datetime import datetime, timedelta
 import gspread
 from gspread.utils import rowcol_to_a1
 import google.auth.exceptions  # 구글 인증 오류 처리를 위한 import
+import requests
+import webbrowser
+
+CURRENT_VERSION = "GMST-UP6"
+GITHUB_OWNER = "eunhuit"
+GITHUB_REPO = "AutoCheck"
+
+def extract_version_num(tag):
+    try:
+        return int(tag.split("GMST-UP")[-1])
+    except (ValueError, IndexError):
+        return None
+
+def check_for_update():
+    url = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}/releases/latest"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            latest_tag = data.get("tag_name", "")
+            latest_ver_num = extract_version_num(latest_tag)
+            current_ver_num = extract_version_num(CURRENT_VERSION)
+            if latest_ver_num is None or current_ver_num is None:
+                if CURRENT_VERSION != latest_tag:
+                    answer = tk.messagebox.askyesno("업데이트 확인",
+                                                    f"새로운 버전({latest_tag})이 있습니다.\n업데이트 하시겠습니까?")
+                    if answer:
+                        webbrowser.open(data.get("html_url", "https://github.com"))
+                        sys.exit(0)
+            else:
+                if latest_ver_num > current_ver_num:
+                    answer = tk.messagebox.askyesno("업데이트 확인",
+                                                    f"새로운 버전({latest_tag})이 있습니다.\n업데이트 하시겠습니까?")
+                    if answer:
+                        webbrowser.open(data.get("html_url", "https://github.com"))
+                        sys.exit(0)
+        else:
+            print(f"GitHub API 요청 실패: {response.status_code}")
+    except Exception as e:
+        print(f"업데이트 확인 중 오류가 발생했습니다:\n{e}")
 
 # 디버깅
 DEBUG_MODE = False  # 활성화: True, 비활성화: False
@@ -29,10 +69,9 @@ def load_config():
         config = {
             "BASE_ROW": 25,
             "DEPARTMENT_NAME": "IT네트워크시스템",
-            "USER_NAME": "",  # 기본 사용자 이름은 빈 문자열
-            "WEEK_NUMBER": "1째주",  # 드롭다운에서 선택할 기본값
-            "MANUAL_MONTH": "",  # 빈 문자열이면 자동으로 현재 월 사용, 아니면 수동 선택한 월 사용 (예: "4월")
-            # 커스텀 디데이 설정 (없으면 None)
+            "USER_NAME": "",
+            "WEEK_NUMBER": "1째주",
+            "MANUAL_MONTH": "",
             "CUSTOM_DDAY": {"label": "", "date": ""}
         }
     if "WEEK_NUMBER" not in config:
@@ -103,7 +142,7 @@ except FileNotFoundError:
     sys.exit(1)
 
 # 스프레드시트 URL 상수
-SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/13wopjVYDxvNH-7L9RX7e9TYqcpSnEjnZoyANc4YPWDc/edit?gid=1839056835#gid=1839056835"
+SPREADSHEET_URL = ""
 
 def get_worksheet():
     """현재 설정된 시트 이름으로 시트를 불러옵니다. 없으면 None 반환."""
@@ -120,10 +159,6 @@ def get_worksheet():
         sys.exit(1)
 
 def get_user_row(ws, checkin_col):
-    """
-    ws(워크시트)에서 '이름' 칼럼(checkin_col-2) 기준으로,
-    config에 저장된 USER_NAME을 찾아 행 번호를 반환합니다.
-    """
     name_col = checkin_col - 2
     user_name = config.get("USER_NAME", "").strip()
     if not user_name:
@@ -326,37 +361,46 @@ def reload_app():
     python_exe = sys.executable
     os.execl(python_exe, python_exe, *sys.argv)
 
-# 메인 창 생성
-root = tk.Tk()
-root.title("근태 관리")
-root.geometry("250x270")
-root.attributes('-topmost', True)
+# ===================== 메인 실행 부분 =====================
 
-bold_font = tkFont.Font(family="Helvetica", size=14, weight="bold")
+if __name__ == '__main__':
+    # 앱 실행 전에 GitHub 릴리즈 버전 업데이트 확인 (임시 창 생성)
+    temp_root = tk.Tk()
+    temp_root.withdraw()  # 임시 창 숨김
+    check_for_update()
+    temp_root.destroy()
 
-btn_check_in = tk.Button(root, text="출근", command=in_, width=20)
-btn_check_in.pack(padx=10, pady=5)
+    # 메인 창 생성
+    root = tk.Tk()
+    root.title("근태 관리")
+    root.geometry("250x270")
+    root.attributes('-topmost', True)
 
-btn_check_out = tk.Button(root, text="퇴근", command=out, width=20)
-btn_check_out.pack(padx=10, pady=5)
+    bold_font = tkFont.Font(family="Helvetica", size=14, weight="bold")
 
-btn_go_out = tk.Button(root, text="외출", command=outside, width=20)
-btn_go_out.pack(padx=10, pady=5)
+    btn_check_in = tk.Button(root, text="출근", command=in_, width=20)
+    btn_check_in.pack(padx=10, pady=5)
 
-btn_settings = tk.Button(root, text="설정", command=open_settings, width=20)
-btn_settings.pack(padx=10, pady=5)
+    btn_check_out = tk.Button(root, text="퇴근", command=out, width=20)
+    btn_check_out.pack(padx=10, pady=5)
 
-# 디데이 라벨들
-dday_local_label = tk.Label(root, font=bold_font)
-dday_local_label.pack(pady=5)
+    btn_go_out = tk.Button(root, text="외출", command=outside, width=20)
+    btn_go_out.pack(padx=10, pady=5)
 
-dday_national_label = tk.Label(root, font=bold_font)
-dday_national_label.pack(pady=5)
+    btn_settings = tk.Button(root, text="설정", command=open_settings, width=20)
+    btn_settings.pack(padx=10, pady=5)
 
-custom_dday_label = tk.Label(root, font=bold_font, fg="blue")
-custom_dday_label.pack(pady=5)
+    # 디데이 라벨들
+    dday_local_label = tk.Label(root, font=bold_font)
+    dday_local_label.pack(pady=5)
 
-update_dday_labels()  # 시작시 라벨 업데이트
-schedule_reload()      # 자동 리로드 예약
+    dday_national_label = tk.Label(root, font=bold_font)
+    dday_national_label.pack(pady=5)
 
-root.mainloop()
+    custom_dday_label = tk.Label(root, font=bold_font, fg="blue")
+    custom_dday_label.pack(pady=5)
+
+    update_dday_labels()  # 시작시 라벨 업데이트
+    schedule_reload()      # 자동 리로드 예약
+
+    root.mainloop()
