@@ -12,7 +12,7 @@ import google.auth.exceptions  # 구글 인증 오류 처리를 위한 import
 import requests
 import webbrowser
 
-CURRENT_VERSION = "GMST-UP6"
+CURRENT_VERSION = "GMST-UP8"
 GITHUB_OWNER = "eunhuit"
 GITHUB_REPO = "AutoCheck"
 
@@ -100,21 +100,29 @@ def adjusted_date(dt):
 
 def gsn(dt):
     dt = adjusted_date(dt)
-    # 수동 월 선택: 설정에 MANUAL_MONTH 값이 있으면 사용, 아니면 자동으로 현재 월 사용
+
+    # 1) 월 문자열 결정
     manual_month = config.get("MANUAL_MONTH", "").strip()
-    if manual_month:
-        month_str = manual_month
+    month_str = manual_month if manual_month else f"{dt.month}월"
+
+    # 2) 자동 째주 계산 (일요일~토요일 기준)
+    #    - month_first: 해당 월 1일
+    #    - first_wd: 1일의 weekday (월=0…일=6)
+    month_first = dt.replace(day=1)
+    first_wd = month_first.weekday()  # 월=0 … 일=6
+    #    - 첫 주의 마지막 날짜 (1일이 속한 토요일)
+    first_week_days = (5 - first_wd) % 7 + 1
+    day = dt.day
+    if day <= first_week_days:
+        week_no = 1
     else:
-        month_str = f"{dt.month}월"
-    manual_week = config.get("WEEK_NUMBER", "").strip()
-    if not manual_week:
-        tk.messagebox.showwarning("경고", "설정에서 째주를 선택하지 않았습니다.")
-        manual_week = f"{(dt.day - 1) // 7 + 1}째주"
-    return f"{month_str} {manual_week}"
+        week_no = ((day - first_week_days - 1) // 7) + 2
+
+    return f"{month_str} {week_no}째주"
 
 def gti(dt):
     dt = adjusted_date(dt)
-    return (dt.weekday() - 2) % 7
+    return (dt.weekday() + 1) % 7
 
 def ft(dt):
     period = "오전" if dt.hour < 12 else "오후"
@@ -142,21 +150,36 @@ except FileNotFoundError:
     sys.exit(1)
 
 # 스프레드시트 URL 상수
-SPREADSHEET_URL = ""
+SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/13wopjVYDxvNH-7L9RX7e9TYqcpSnEjnZoyANc4YPWDc/edit?gid=1839056835#gid=1839056835"
 
 def get_worksheet():
-    """현재 설정된 시트 이름으로 시트를 불러옵니다. 없으면 None 반환."""
+    """현재 설정된 시트 이름 또는 사용자가 지정한 째주를 우선으로 찾아 불러옵니다."""
     now_actual = get_now()
-    sheet_name = gsn(now_actual)
+    manual_week = config.get("WEEK_NUMBER", "").strip()  # 예: "5째주"
     try:
-        ws = gc.open_by_url(SPREADSHEET_URL).worksheet(sheet_name)
-        return ws
-    except gspread.exceptions.WorksheetNotFound:
-        return None
+        sh = gc.open_by_url(SPREADSHEET_URL)
     except google.auth.exceptions.RefreshError as e:
         tk.messagebox.showerror("키 파일 오류",
                                 f"Google 인증 오류가 발생했습니다.\n키 파일에 문제가 있을 수 있습니다.\n오류 상세: {e}")
         sys.exit(1)
+
+    # 1) 사용자 지정 째주로 끝나는 시트 우선 탐색 (월 상관없이)
+    if manual_week:
+        for w in sh.worksheets():
+            if w.title.endswith(f" {manual_week}"):
+                return w
+
+    # 2) 자동 생성된 시트명 시도
+    sheet_name = gsn(now_actual)
+    try:
+        return sh.worksheet(sheet_name)
+    except gspread.exceptions.WorksheetNotFound:
+        # 3) 자동명도 없으면, 같은 째주 suffix로 첫 매칭
+        suffix = sheet_name.split()[-1]  # "n째주"
+        for w in sh.worksheets():
+            if w.title.endswith(suffix):
+                return w
+        return None
 
 def get_user_row(ws, checkin_col):
     name_col = checkin_col - 2
@@ -278,7 +301,16 @@ def open_settings():
     name_entry = tk.Entry(settings_window)
     name_entry.insert(0, config.get("USER_NAME", ""))
     name_entry.pack(pady=5)
-    
+
+    # 월 선택 옵션 추가 (자동 또는 수동 선택)
+    tk.Label(settings_window, text="월 선택:").pack(pady=5)
+    month_options = ["자동"] + [f"{i}월" for i in range(1, 13)]
+    month_var = tk.StringVar(settings_window)
+    current_manual_month = config.get("MANUAL_MONTH", "").strip()
+    month_var.set(current_manual_month if current_manual_month else "자동")
+    month_menu = tk.OptionMenu(settings_window, month_var, *month_options)
+    month_menu.pack(pady=5)
+
     tk.Label(settings_window, text="째주 선택:").pack(pady=5)
     week_options = ["1째주", "2째주", "3째주", "4째주", "5째주", "6째주"]
     week_var = tk.StringVar(settings_window)
@@ -289,14 +321,7 @@ def open_settings():
     week_menu = tk.OptionMenu(settings_window, week_var, *week_options)
     week_menu.pack(pady=5)
     
-    # 월 선택 옵션 추가 (자동 또는 수동 선택)
-    tk.Label(settings_window, text="월 선택:").pack(pady=5)
-    month_options = ["자동"] + [f"{i}월" for i in range(1, 13)]
-    month_var = tk.StringVar(settings_window)
-    current_manual_month = config.get("MANUAL_MONTH", "").strip()
-    month_var.set(current_manual_month if current_manual_month else "자동")
-    month_menu = tk.OptionMenu(settings_window, month_var, *month_options)
-    month_menu.pack(pady=5)
+
     
     # 커스텀 디데이 설정 항목
     tk.Label(settings_window, text="커스텀 디데이 이벤트명:").pack(pady=5)
